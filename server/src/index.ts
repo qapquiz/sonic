@@ -1,4 +1,7 @@
 import { ApolloServer, MockList, gql } from 'apollo-server';
+import { Resolvers } from './types';
+import { bitQueryClient } from './apollo/client';
+import { TRACKING_BALANCE } from './apollo/queries';
 
 const typeDefs = gql`
     type Query {
@@ -18,13 +21,15 @@ const typeDefs = gql`
         "Currency's address"
         id: ID!
         "Currency's address"
-        address: String
+        address: String!
         "Currency's name e.g. Ethereum, Pancake"
         name: String!
         "Currency's symbol e.g. ETH, BNB, CAKE"
         symbol: String!
+        "Currency's decimal"
+        decimals: Int!
         "Currency's price per token"
-        price: String!
+        price: String
         "Amount of token that user have"
         value: String!
         "Currency's type 'ERC20'"
@@ -51,9 +56,46 @@ const mocks = {
     }),
 }
 
-const server = new ApolloServer({ typeDefs, mocks });
+const resolvers: Resolvers = {
+    Query: {
+        /** 
+         * @todo #1 need to define type of Response query from bitquery.io
+         *  can find the define schema at https://explorer.bitquery.io/graphql/Sr4ksApTAT
+        */
+        user: async (parent, { id }) => {
+            const { loading, error, data } = await bitQueryClient.query({
+                query: TRACKING_BALANCE,
+                variables: {
+                    "limit":10,
+                    "offset":0,
+                    "network":"bsc",
+                    "address": id
+                }
+            });
 
-server.listen().then(() => {
+            return {
+                id: id,
+                balances: data.ethereum.address[0].balances.map((balance: any) => {
+                    return {
+                        id: balance.currency.address,
+                        address: balance.currency.address,
+                        name: balance.currency.name,
+                        symbol: balance.currency.symbol,
+                        decimals: balance.currency.decimals,
+                        value: balance.value,
+                    };
+                }),
+            };
+        }
+    },
+}
+
+const server = new ApolloServer({
+    typeDefs, 
+    resolvers,
+});
+
+server.listen().then(async () => {
     console.log(`
         🚀  Server is running!
         🔉  Listening on port 4000
